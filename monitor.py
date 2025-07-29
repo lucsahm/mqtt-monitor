@@ -1,33 +1,40 @@
-#!/usr/bin/env python3
-
 import time
+import json
 import paho.mqtt.client as mqtt
-from datetime import datetime
+from datetime import datetime, timezone
 
 last_heartbeat = None
 timeout = 60  # segundos
 
-def on_connect(client, userdata, flags, rc):
-    print(f"🟢 Conectado ao broker com código de retorno: {rc}")
-    client.subscribe("esp32/heartbeat")
-    print("📡 Inscrito no tópico 'esp32/heartbeat'")
+TOPIC_SUB = "esp32/heartbeat"
+TOPIC_PUB = "esp32/heartbeat/response"
 
-def on_message(client, userdata, message):
+def on_connect(client, userdata, flags, rc, properties=None):
+    client.subscribe(TOPIC_SUB)
+
+def on_message(client, userdata, msg):
     global last_heartbeat
-    last_heartbeat = datetime.now()
-    print("💓 Heartbeat recebido:", last_heartbeat, "→", message.payload.decode())
+    last_heartbeat = datetime.now(timezone.utc)
+    response = {
+        "response": "pong",
+        "timestamp": last_heartbeat.isoformat()
+    }
+    client.publish(TOPIC_PUB, payload=json.dumps(response))
 
-client = mqtt.Client()
+client = mqtt.Client(protocol=mqtt.MQTTv311)
 client.on_connect = on_connect
 client.on_message = on_message
+
 client.connect("broker.hivemq.com", 1883, 60)
 client.loop_start()
 
 while True:
-    print("⌛ Verificando...")
     if last_heartbeat:
-        diff = (datetime.now() - last_heartbeat).total_seconds()
+        diff = (datetime.now(timezone.utc) - last_heartbeat).total_seconds()
         if diff > timeout:
-            print("❌ Sem heartbeat! Último há", int(diff), "segundos")
+            alert = {
+                "response": "sem heartbeat",
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+            client.publish(TOPIC_PUB, payload=json.dumps(alert))
     time.sleep(10)
-
