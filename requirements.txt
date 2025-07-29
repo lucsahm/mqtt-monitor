@@ -1,2 +1,1 @@
-pip3 install paho-mqtt
 paho-mqtt
