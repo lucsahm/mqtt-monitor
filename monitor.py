@@ -1,47 +1,42 @@
+#!/usr/bin/env python3
+
+import time
 import json
-from datetime import datetime, timezone
-import threading
 import paho.mqtt.client as mqtt
-from flask import Flask
+from datetime import datetime, timezone
 
-# Configurações MQTT
-BROKER = "broker.hivemq.com"
-PORT = 1883
-TOPIC_RECEIVE = "sahm/heartbeat"
-TOPIC_RESPONSE = "sahm/heartbeat/response"
+last_heartbeat = None
+timeout = 60  # segundos
 
-# Função chamada quando uma mensagem é recebida
+TOPIC_SUB = "esp32/heartbeat"
+TOPIC_PUB = "esp32/heartbeat/response"
+
+def on_connect(client, userdata, flags, rc, properties=None):
+    client.subscribe(TOPIC_SUB)
+
 def on_message(client, userdata, msg):
-    try:
-        payload = msg.payload.decode().strip()
-        print(f"💓 Heartbeat recebido: {payload}")
-        if payload.lower() == "heartbeat":
-            now = datetime.now(timezone.utc).isoformat()
-            response = {
-                "response": "pong",
-                "timestamp": now
+    global last_heartbeat
+    last_heartbeat = datetime.now(timezone.utc)
+    response = {
+        "response": "pong",
+        "timestamp": last_heartbeat.isoformat()
+    }
+    client.publish(TOPIC_PUB, payload=json.dumps(response))
+
+client = mqtt.Client(protocol=mqtt.MQTTv311)
+client.on_connect = on_connect
+client.on_message = on_message
+
+client.connect("broker.hivemq.com", 1883, 60)
+client.loop_start()
+
+while True:
+    if last_heartbeat:
+        diff = (datetime.now(timezone.utc) - last_heartbeat).total_seconds()
+        if diff > timeout:
+            alert = {
+                "response": "sem heartbeat",
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
-            client.publish(TOPIC_RESPONSE, json.dumps(response))
-    except Exception as e:
-        print("Erro ao processar mensagem:", e)
-
-# Função que roda o loop MQTT
-def mqtt_loop():
-    client = mqtt.Client()
-    client.on_message = on_message
-    client.connect(BROKER, PORT)
-    client.subscribe(TOPIC_RECEIVE)
-    client.loop_forever()
-
-# Inicia o monitor MQTT em uma thread
-threading.Thread(target=mqtt_loop, daemon=True).start()
-
-# Flask para manter uma porta aberta no Render
-app = Flask(__name__)
-
-@app.route('/')
-def status():
-    return "MQTT Monitor rodando com Flask + MQTT.", 200
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=10000)
+            client.publish(TOPIC_PUB, payload=json.dumps(alert))
+    time.sleep(10)
