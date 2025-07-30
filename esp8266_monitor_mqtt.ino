@@ -98,6 +98,8 @@ void setup() {
   Serial.println(mqttTopic);
 
   client.begin(MQTT_BROKER, MQTT_PORT, net);
+  // Adiciona o LWT (mensagem enviada se o ESP cair)
+  client.setWill(mqttTopic, "{\"device\":\"esp8266\",\"status\":\"offline\"}", true, 1);
   connectMQTT();
 }
 
