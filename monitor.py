@@ -56,6 +56,13 @@ def on_message(client, userdata, msg):
         print(f"❌ Erro ao processar mensagem: {e}")
 
 client = mqtt.Client(protocol=mqtt.MQTTv311)
+
+# LWT do monitor
+client.will_set("esp8266/monitor", payload=json.dumps({
+    "device": "monitor",
+    "status": "offline"
+}), qos=1, retain=True)
+
 client.on_connect = on_connect
 client.on_message = on_message
 
